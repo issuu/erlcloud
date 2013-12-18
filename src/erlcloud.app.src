@@ -11,7 +11,7 @@
                   public_key,
                   ssl,
                   xmerl,
-                  inets,
+                  hackney,
                   jsx]},
   {modules, []},
   {env, []}

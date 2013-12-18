@@ -5,7 +5,7 @@
 -include("erlcloud_ddb.hrl").
 
 %% Unit tests for ddb.
-%% These tests work by using meck to mock httpc. There are two classes of test: input and output.
+%% These tests work by using meck to mock erlcloud_httpc. There are two classes of test: input and output.
 %%
 %% Input tests verify that different function args produce the desired JSON request.
 %% An input test list provides a list of funs and the JSON that is expected to result.
@@ -58,11 +58,12 @@ operation_test_() ->
      ]}.
 
 start() ->
-    meck:new(httpc, [unstick]),
+    meck:new(erlcloud_httpc, [unstick]),
+    meck:expect(erlcloud_httpc, extract_body, fun(B) -> B end),
     ok.
 
 stop(_) ->
-    meck:unload(httpc).
+    meck:unload(erlcloud_httpc).
 
 %%%===================================================================
 %%% Input test helpers
@@ -82,7 +83,7 @@ validate_body(Body, Expected) ->
     end,
     ?assertEqual(Want, Actual).
 
-%% returns the mock of the httpc function input tests expect to be called.
+%% returns the mock of the erlcloud_httpc function input tests expect to be called.
 %% Validates the request body and responds with the provided response.
 -spec input_expect(string(), expected_body()) -> fun().
 input_expect(Response, Expected) ->
@@ -99,7 +100,7 @@ input_test(Response, {Line, {Description, Fun, Expected}}) when
     {Description, 
      {Line,
       fun() ->
-              meck:expect(httpc, request, input_expect(Response, Expected)),
+              meck:expect(erlcloud_httpc, request, input_expect(Response, Expected)),
               erlcloud_ddb:configure(string:copies("A", 20), string:copies("a", 40)),
               Fun()
       end}}.
@@ -115,7 +116,7 @@ input_tests(Response, Tests) ->
 %%% Output test helpers
 %%%===================================================================
 
-%% returns the mock of the httpc function output tests expect to be called.
+%% returns the mock of the erlcloud_httpc function output tests expect to be called.
 -spec output_expect(string()) -> fun().
 output_expect(Response) ->
     fun(post, {_Url, _Headers, _ContentType, _Body}, _HTTPOpts, _Opts) -> 
@@ -129,7 +130,7 @@ output_test(Fun, {Line, {Description, Response, Result}}) ->
     {Description,
      {Line,
       fun() ->
-              meck:expect(httpc, request, output_expect(Response)),
+              meck:expect(erlcloud_httpc, request, output_expect(Response)),
               erlcloud_ddb:configure(string:copies("A", 20), string:copies("a", 40)),
               Actual = Fun(),
               case Result =:= Actual of
@@ -152,19 +153,19 @@ output_tests(Fun, Tests) ->
 %%% Error test helpers
 %%%===================================================================
 
--spec httpc_response(pos_integer(), string()) -> tuple().
-httpc_response(Code, Body) ->
+-spec erlcloud_httpc_response(pos_integer(), string()) -> tuple().
+erlcloud_httpc_response(Code, Body) ->
     {ok, {{"", Code, ""}, [], list_to_binary(Body)}}.
     
 -type error_test_spec() :: {pos_integer(), {string(), list(), term()}}.
 -spec error_test(fun(), error_test_spec()) -> tuple().
 error_test(Fun, {Line, {Description, Responses, Result}}) ->
     %% Add a bogus response to the end of the request to make sure we don't call too many times
-    Responses1 = Responses ++ [httpc_response(200, "TOO MANY REQUESTS")],
+    Responses1 = Responses ++ [erlcloud_httpc_response(200, "TOO MANY REQUESTS")],
     {Description,
      {Line,
       fun() ->
-              meck:sequence(httpc, request, 4, Responses1),
+              meck:sequence(erlcloud_httpc, request, 4, Responses1),
               erlcloud_ddb:configure(string:copies("A", 20), string:copies("a", 40)),
               Actual = Fun(),
               ?assertEqual(Result, Actual)
@@ -191,7 +192,7 @@ input_exception_test_() ->
 %% Error handling tests based on:
 %% http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ErrorHandling.html
 error_handling_tests(_) ->
-    OkResponse = httpc_response(200, "
+    OkResponse = erlcloud_httpc_response(200, "
 {\"Item\":
 	{\"friends\":{\"SS\":[\"Lynda\", \"Aaron\"]},
 	 \"status\":{\"S\":\"online\"}
@@ -205,7 +206,7 @@ error_handling_tests(_) ->
     Tests = 
         [?_ddb_test(
             {"Test retry after ProvisionedThroughputExceededException",
-             [httpc_response(400, "
+             [erlcloud_httpc_response(400, "
 {\"__type\":\"com.amazonaws.dynamodb.v20111205#ProvisionedThroughputExceededException\",
 \"message\":\"The level of configured provisioned throughput for the table was exceeded. Consider increasing your provisioning level with the UpdateTable API\"}"
                             ),
@@ -213,14 +214,14 @@ error_handling_tests(_) ->
              OkResult}),
          ?_ddb_test(
             {"Test ConditionalCheckFailed error",
-             [httpc_response(400, "
+             [erlcloud_httpc_response(400, "
 {\"__type\":\"com.amazonaws.dynamodb.v20111205#ConditionalCheckFailedException\",
 \"message\":\"The expected value did not match what was stored in the system.\"}"
                             )],
              {error, {<<"ConditionalCheckFailedException">>, <<"The expected value did not match what was stored in the system.">>}}}),
          ?_ddb_test(
             {"Test retry after 500",
-             [httpc_response(500, ""),
+             [erlcloud_httpc_response(500, ""),
               OkResponse],
              OkResult})
         ],

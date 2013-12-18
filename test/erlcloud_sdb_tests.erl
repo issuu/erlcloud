@@ -7,15 +7,16 @@
 
 setup() ->
     erlcloud_sdb:configure("fake", "fake-secret"),
-    meck:new(httpc, [unstick]).
+    meck:new(erlcloud_httpc, [unstick]),
+    meck:expect(erlcloud_httpc, extract_body, fun(B) -> B end).
 
 cleanup(_) ->
-    meck:unload(httpc).
+    meck:unload(erlcloud_httpc).
 
 %% Helpers
 
 expect_chain([Response | Chain]) ->
-    meck:expect(httpc, request,
+    meck:expect(erlcloud_httpc, request,
                 fun(_, _, _, _) ->
                         expect_chain(Chain),
                         Response

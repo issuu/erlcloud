@@ -94,16 +94,16 @@ aws_request2_no_update(Method, Protocol, Host, Port, Path, Params, #aws_config{}
         _ -> URL = [UProtocol, Host, $:, port_to_str(Port), Path]
     end,
     
-    %% Note: httpc MUST be used with {timeout, timeout()} option
+    %% Note: erlcloud_httpc MUST be used with {timeout, timeout()} option
     %%       Many timeout related failures is observed at prod env
     %%       when library is used in 24/7 manner
     Response =
         case Method of
             get ->
                 Req = lists:flatten([URL, $?, Query]),
-                httpc:request(get, {Req, []}, [{timeout, Config#aws_config.timeout}], []);
+                erlcloud_httpc:request(get, {Req, []}, [{timeout, Config#aws_config.timeout}], []);
             _ ->
-                httpc:request(Method,
+                erlcloud_httpc:request(Method,
                               {lists:flatten(URL), [], "application/x-www-form-urlencoded; charset=utf-8",
                                list_to_binary(Query)}, [{timeout, Config#aws_config.timeout}], [])
         end,
@@ -190,13 +190,13 @@ timestamp_to_gregorian_seconds(Timestamp) ->
 get_credentials_from_metadata() ->
     %% TODO this function should retry on errors getting credentials
     %% First get the list of roles
-    case http_body(httpc:request("http://169.254.169.254/latest/meta-data/iam/security-credentials/")) of
+    case http_body(erlcloud_httpc:request("http://169.254.169.254/latest/meta-data/iam/security-credentials/")) of
         {error, Reason} ->
             {error, Reason};
         {ok, Body} ->
             %% Always use the first role
             Role = string:sub_word(Body, 1, $\n),
-            case http_body(httpc:request(
+            case http_body(erlcloud_httpc:request(
                              "http://169.254.169.254/latest/meta-data/iam/security-credentials/" ++ Role)) of
                 {error, Reason} ->
                     {error, Reason};
@@ -219,7 +219,7 @@ port_to_str(Port) when is_list(Port) ->
     Port.
 
 -spec http_body({ok, tuple()} | {error, term()}) -> {ok, string()} | {error, tuple()}.
-%% Extract the body and do error handling on the return of a httpc:request call.
+%% Extract the body and do error handling on the return of a erlcloud_httpc:request call.
 http_body(Return) ->
     case http_headers_body(Return) of
         {ok, {_, Body}} ->
@@ -230,12 +230,12 @@ http_body(Return) ->
 
 -type headers() :: [{string(), string()}].
 -spec http_headers_body({ok, tuple()} | {error, term()}) -> {ok, {headers(), string()}} | {error, tuple()}.
-%% Extract the headers and body and do error handling on the return of a httpc:request call.
+%% Extract the headers and body and do error handling on the return of a erlcloud_httpc:request call.
 http_headers_body({ok, {{_HTTPVer, OKStatus, _StatusLine}, Headers, Body}}) 
   when OKStatus >= 200, OKStatus =< 299 ->
-    {ok, {Headers, Body}};
+    {ok, {Headers, erlcloud_httpc:extract_body(Body)}};
 http_headers_body({ok, {{_HTTPVer, Status, StatusLine}, _Headers, Body}}) ->
-    {error, {http_error, Status, StatusLine, Body}};
+    {error, {http_error, Status, StatusLine, erlcloud_httpc:extract_body(Body)}};
 http_headers_body({error, Reason}) ->
     {error, {socket_error, Reason}}.
 

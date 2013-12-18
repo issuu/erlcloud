@@ -1608,7 +1608,7 @@ mturk_request(Config, Operation, Params) ->
 
     URL = ["https://", Config#aws_config.mturk_host, "/"],
 
-    Response = httpc:request(post,
+    Response = erlcloud_httpc:request(post,
                              {lists:flatten(URL), [], "application/x-www-form-urlencoded",
                               list_to_binary(erlcloud_http:make_query_string(QParams))}, [], []),
 
